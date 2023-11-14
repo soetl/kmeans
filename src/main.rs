@@ -182,12 +182,12 @@ impl KMeans {
 
             let mut count = 0;
             for i in 0..self.clusters.len() {
-                for j in 0..clusters_last.len() {
+                for j in &clusters_last {
                     if self.clusters[i]
                         .clone()
                         .collect()
                         .unwrap()
-                        .eq(&clusters_last[j].clone().collect().unwrap())
+                        .eq(&j.clone().collect().unwrap())
                     {
                         count += 1;
                     }
