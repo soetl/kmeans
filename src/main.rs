@@ -170,7 +170,31 @@ impl KMeans {
 
             self.eval_centers();
 
+            step += 1;
+
             if self.centers.len() <= 1 {
+                return self.clusters;
+            }
+
+            if self.clusters.len() != clusters_last.len() {
+                continue;
+            }
+
+            let mut count = 0;
+            for i in 0..self.clusters.len() {
+                for j in 0..clusters_last.len() {
+                    if self.clusters[i]
+                        .clone()
+                        .collect()
+                        .unwrap()
+                        .eq(&clusters_last[j].clone().collect().unwrap())
+                    {
+                        count += 1;
+                    }
+                }
+            }
+
+            if count == self.clusters.len() {
                 return self.clusters;
             }
 
@@ -182,8 +206,6 @@ impl KMeans {
             {
                 return self.clusters;
             }
-
-            step += 1;
         }
     }
 
