@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::Path};
+use std::collections::HashSet;
 
 use polars::prelude::*;
 use rand::Rng;
@@ -8,11 +8,6 @@ const CLUSTER_CENTER_2: u64 = 18;
 const RESULT_DIRECTORY: &str = "./result";
 
 fn main() {
-    /*let _ = Path::new(RESULT_DIRECTORY)
-    .exists()
-    .then(|| std::fs::remove_dir_all(RESULT_DIRECTORY))
-    .unwrap_or(Ok(()));*/
-
     let df = LazyCsvReader::new("kmeans.csv")
         .has_header(true)
         .finish()
