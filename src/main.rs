@@ -8,6 +8,12 @@ const CLUSTER_CENTER_2: u64 = 18;
 const RESULT_DIRECTORY: &str = "./result";
 
 fn main() {
+    if std::path::Path::new(&RESULT_DIRECTORY).exists() {
+        std::fs::remove_dir_all(RESULT_DIRECTORY).expect("Failed to remove result directory");
+    }
+
+    std::fs::create_dir_all(RESULT_DIRECTORY).expect("Failed to create result directory");
+
     let df = LazyCsvReader::new("kmeans.csv")
         .has_header(true)
         .finish()
@@ -20,7 +26,7 @@ fn main() {
     let csv_options = CsvWriterOptions {
         has_header: true,
         batch_size: 10000,
-        maintain_order: false,
+        maintain_order: true,
         serialize_options: SerializeOptions {
             date_format: None,
             time_format: None,
@@ -34,7 +40,12 @@ fn main() {
         },
     };
 
-    let kmeans = KMeans::new(df, 2_u8, Some(vec![CLUSTER_CENTER_1, CLUSTER_CENTER_2]), csv_options.clone());
+    let kmeans = KMeans::new(
+        df,
+        2_u8,
+        Some(vec![CLUSTER_CENTER_1, CLUSTER_CENTER_2]),
+        csv_options.clone(),
+    );
 
     for (i, lf) in kmeans.eval().iter().enumerate() {
         let _ = lf.clone().sink_csv(
@@ -52,7 +63,12 @@ struct KMeans {
 }
 
 impl KMeans {
-    pub fn new(df: LazyFrame, n_clusters: impl Into<usize>, center_ids: Option<Vec<u64>>, csv_options: CsvWriterOptions) -> Self {
+    pub fn new(
+        df: LazyFrame,
+        n_clusters: impl Into<usize>,
+        center_ids: Option<Vec<u64>>,
+        csv_options: CsvWriterOptions,
+    ) -> Self {
         let n_clusters = n_clusters.into();
         let centers = Self::init_centers(df.clone(), n_clusters, center_ids);
 
@@ -71,7 +87,6 @@ impl KMeans {
         let mut step = 1;
 
         loop {
-            println!("Step {}", step);
             clusters_last = self.clusters.clone();
 
             let mut exprs = Vec::new();
@@ -88,7 +103,7 @@ impl KMeans {
             let df_clusters = self.df.clone().with_columns(exprs);
 
             let _ = df_clusters.clone().sink_csv(
-                format!("{RESULT_DIRECTORY}/{}_dist.csv", step).into(),
+                format!("{RESULT_DIRECTORY}/{}__dist.csv", step).into(),
                 self.csv_options.clone(),
             );
 
@@ -118,9 +133,8 @@ impl KMeans {
                 let mut min_dist = f64::MAX;
                 let mut min_dist_idx = 0;
 
-                for j in 0..clusters_dist.len() {
-                    let dist = clusters_dist[j].get(i).unwrap();
-                    let dist = *dist;
+                for (j, dist) in clusters_dist.iter().enumerate() {
+                    let dist = dist[i];
 
                     if dist < min_dist {
                         min_dist = dist;
@@ -138,11 +152,6 @@ impl KMeans {
 
             let df = self.df.clone().left_join(df_clusters, col("n"), col("n"));
 
-            let _ = df.clone().sink_csv(
-                format!("{RESULT_DIRECTORY}/{}_clusters.csv", step).into(),
-                self.csv_options.clone(),
-            );
-
             self.clusters = df
                 .collect()
                 .unwrap()
@@ -152,7 +161,18 @@ impl KMeans {
                 .map(|x| x.lazy())
                 .collect();
 
+            for (i, lf) in self.clusters.iter().enumerate() {
+                let _ = lf.clone().sink_csv(
+                    format!("{RESULT_DIRECTORY}/{}_{}_cluster.csv", step, i).into(),
+                    self.csv_options.clone(),
+                );
+            }
+
             self.eval_centers();
+
+            if self.centers.len() <= 1 {
+                return self.clusters;
+            }
 
             if self.clusters[0]
                 .clone()
