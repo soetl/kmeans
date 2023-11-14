@@ -14,7 +14,7 @@ fn main() {
         .unwrap()
         .select([
             col("n").cast(DataType::UInt64),
-            col("*").exclude(&["n"]).cast(DataType::Float64),
+            col("*").exclude(["n"]).cast(DataType::Float64),
         ]);
 
     let csv_options = CsvWriterOptions {
@@ -34,7 +34,7 @@ fn main() {
         },
     };
 
-    let kmeans = KMeans::new(df, 2 as u8, Some(vec![CLUSTER_CENTER_1, CLUSTER_CENTER_2]), csv_options.clone());
+    let kmeans = KMeans::new(df, 2_u8, Some(vec![CLUSTER_CENTER_1, CLUSTER_CENTER_2]), csv_options.clone());
 
     for (i, lf) in kmeans.eval().iter().enumerate() {
         let _ = lf.clone().sink_csv(
@@ -105,7 +105,7 @@ impl KMeans {
 
             let clusters_dist = df_clusters
                 .clone()
-                .select(&[col("*").exclude(&["x", "y", "z", "n"])])
+                .select(&[col("*").exclude(["x", "y", "z", "n"])])
                 .collect()
                 .unwrap()
                 .iter()
@@ -146,7 +146,7 @@ impl KMeans {
             self.clusters = df
                 .collect()
                 .unwrap()
-                .partition_by(&["cluster"], false)
+                .partition_by(["cluster"], false)
                 .unwrap()
                 .into_iter()
                 .map(|x| x.lazy())
@@ -207,7 +207,7 @@ impl KMeans {
         let centers_df = df
             .clone()
             .filter(col("n").is_in(lit(center_ids)))
-            .select(&[col("*").exclude(&["n"])])
+            .select(&[col("*").exclude(["n"])])
             .collect()
             .unwrap();
 
