@@ -89,9 +89,6 @@ impl KMeans {
         loop {
             clusters_last = self.clusters.clone();
 
-            println!("Step: {}", step);
-            println!("Centers: {:?}", self.centers);
-
             let mut exprs = Vec::new();
             for i in 0..self.centers.len() {
                 exprs.push(
@@ -199,12 +196,7 @@ impl KMeans {
                     .collect()
                     .unwrap()
                     .iter()
-                    .map(|s| {
-                        let sum = s.sum::<f64>().unwrap();
-                        let len = s.len() as f64;
-                        println!("sum: {}, len: {}", sum, len);
-                        sum / len
-                    })
+                    .map(|s| s.sum::<f64>().unwrap() / s.len() as f64)
                     .collect(),
             );
         }
