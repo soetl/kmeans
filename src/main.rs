@@ -1,10 +1,9 @@
 use std::collections::HashSet;
 
+use plotters::prelude::*;
 use polars::prelude::*;
 use rand::Rng;
 
-const CLUSTER_CENTER_1: u64 = 7;
-const CLUSTER_CENTER_2: u64 = 18;
 const RESULT_DIRECTORY: &str = "./result";
 
 fn main() {
@@ -40,25 +39,73 @@ fn main() {
         },
     };
 
-    let kmeans = KMeans::new(
-        df,
-        2_u8,
-        Some(vec![CLUSTER_CENTER_1, CLUSTER_CENTER_2]),
-        csv_options.clone(),
-    );
+    let mut dann_indexes = Vec::new();
+    for i in 2..15_u8 {
+        let kmeans = KMeans::new(df.clone(), i, None, false, csv_options.clone());
+        let clusters = kmeans.eval();
+        if clusters.len() != i as usize {
+            println!("{} num of clusters decreased to {}", i, clusters.len());
+        } else {
+            let dann_index = dann_index(clusters.clone());
+            dann_indexes.push((i, dann_index));
+        }
+    }
+
+    let mut max = (0_u8, f64::MIN);
+    dann_indexes.iter().for_each(|(x, y)| if *y > max.1 { max = (*x, *y) });
+
+    let kmeans = KMeans::new(df.clone(), max.0, None, true, csv_options.clone());
 
     for (i, lf) in kmeans.eval().iter().enumerate() {
         let _ = lf.clone().sink_csv(
-            format!("{RESULT_DIRECTORY}/res_{}.csv", i).into(),
+            format!("{RESULT_DIRECTORY}/res_{}_cluster.csv", i).into(),
             csv_options.clone(),
         );
     }
+    
+    let chart_path = format!("{RESULT_DIRECTORY}/dann_index.png");
+    let root = BitMapBackend::new(&chart_path, (1024, 768)).into_drawing_area();
+    root.fill(&WHITE).unwrap();
+
+    let mut chart = ChartBuilder::on(&root)
+        .margin(10)
+        .caption("Dann Index over Clusters", ("sans-serif", 40))
+        .set_label_area_size(LabelAreaPosition::Left, 60)
+        .set_label_area_size(LabelAreaPosition::Bottom, 40)
+        .build_cartesian_2d(1..16, 0.0..1.0)
+        .unwrap();
+
+    chart
+        .configure_mesh()
+        .disable_x_mesh()
+        .disable_y_mesh()
+        .x_labels(30)
+        .max_light_lines(4)
+        .y_desc("Score")
+        .draw()
+        .unwrap();
+
+    let _ = chart.draw_series(LineSeries::new(
+        dann_indexes
+            .iter()
+            .map(|(x, y)| (*x as i32, *y))
+            .collect::<Vec<_>>(),
+        &RED,
+    ));
+
+    let _ = chart.draw_series(
+        dann_indexes
+            .iter()
+            .map(|(x, y)| Circle::new((*x as i32, *y), 3, BLUE.filled())),
+    );
 }
 
+#[derive(Clone)]
 struct KMeans {
     df: LazyFrame,
     clusters: Vec<LazyFrame>,
     centers: Vec<Vec<f64>>,
+    io: bool,
     csv_options: CsvWriterOptions,
 }
 
@@ -67,6 +114,7 @@ impl KMeans {
         df: LazyFrame,
         n_clusters: impl Into<usize>,
         center_ids: Option<Vec<u64>>,
+        io: bool,
         csv_options: CsvWriterOptions,
     ) -> Self {
         let n_clusters = n_clusters.into();
@@ -76,6 +124,7 @@ impl KMeans {
             df,
             centers,
             clusters: Vec::new(),
+            io,
             csv_options,
         }
     }
@@ -102,10 +151,12 @@ impl KMeans {
 
             let df_clusters = self.df.clone().with_columns(exprs);
 
-            let _ = df_clusters.clone().sink_csv(
-                format!("{RESULT_DIRECTORY}/{}__dist.csv", step).into(),
-                self.csv_options.clone(),
-            );
+            if self.io {
+                let _ = df_clusters.clone().sink_csv(
+                    format!("{RESULT_DIRECTORY}/{}__dist.csv", step).into(),
+                    self.csv_options.clone(),
+                );
+            }
 
             let df_num = df_clusters
                 .clone()
@@ -161,11 +212,13 @@ impl KMeans {
                 .map(|x| x.lazy())
                 .collect();
 
-            for (i, lf) in self.clusters.iter().enumerate() {
-                let _ = lf.clone().sink_csv(
-                    format!("{RESULT_DIRECTORY}/{}_{}_cluster.csv", step, i).into(),
-                    self.csv_options.clone(),
-                );
+            if self.io {
+                for (i, lf) in self.clusters.iter().enumerate() {
+                    let _ = lf.clone().sink_csv(
+                        format!("{RESULT_DIRECTORY}/{}_{}_cluster.csv", step, i).into(),
+                        self.csv_options.clone(),
+                    );
+                }
             }
 
             self.eval_centers();
@@ -265,4 +318,73 @@ impl KMeans {
 
         centers
     }
+}
+
+fn dann_index(lf: Vec<LazyFrame>) -> f64 {
+    let mut min = f64::MAX;
+    let mut max = f64::MIN;
+
+    for i in 0..lf.len() {
+        let lf1 = lf[i].clone();
+
+        let s = lf1
+            .clone()
+            .select([col("*").exclude(["n"])])
+            .collect()
+            .unwrap()
+            .iter()
+            .map(|s| s.f64().cloned().unwrap())
+            .collect::<Vec<_>>();
+
+        for j in 0..s[0].len() {
+            for k in 0..s[0].len() {
+                if j == k {
+                    continue;
+                }
+
+                let mut sum = 0.0;
+                for l in s.clone() {
+                    sum += (l.get(j).unwrap() - l.get(k).unwrap()).powi(2);
+                }
+
+                let d = sum.sqrt();
+
+                if d > max {
+                    max = d;
+                }
+            }
+        }
+
+        for (j, lf2) in lf.iter().enumerate() {
+            if i == j {
+                continue;
+            }
+
+            let s2 = lf2
+                .clone()
+                .select([col("*").exclude(["n"])])
+                .collect()
+                .unwrap()
+                .iter()
+                .map(|s| s.f64().cloned().unwrap())
+                .collect::<Vec<_>>();
+
+            for k in 0..s[0].len() {
+                for l in 0..s2[0].len() {
+                    let mut sum = 0.0;
+                    for m in 0..s.len() {
+                        sum += (s[m].get(k).unwrap() - s2[m].get(l).unwrap()).powi(2);
+                    }
+
+                    let d = sum.sqrt();
+
+                    if d < min {
+                        min = d;
+                    }
+                }
+            }
+        }
+    }
+
+    min / max
 }

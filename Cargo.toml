@@ -6,5 +6,6 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+plotters = "0.3.5"
 polars = { version = "0.34.2", features = ["lazy", "partition_by", "is_in", "streaming"] }
 rand = "0.8.5"
