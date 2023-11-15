@@ -40,7 +40,7 @@ fn main() {
     };
 
     let mut dann_indexes = Vec::new();
-    for i in 2..15_u8 {
+    for i in 2..=15_u8 {
         let kmeans = KMeans::new(df.clone(), i, None, false, csv_options.clone());
         let clusters = kmeans.eval();
         if clusters.len() != i as usize {
@@ -82,6 +82,7 @@ fn main() {
         .x_labels(30)
         .max_light_lines(4)
         .y_desc("Score")
+        .axis_desc_style(("sans-serif", 22))
         .draw()
         .unwrap();
 
